@@ -5,64 +5,70 @@ from PIL import Image, ImageDraw, ImageFont
 from deep_translator import GoogleTranslator
 import easyocr
 
-# תיקון השגיאה - הפקודה הנכונה היא page_title
-st.set_page_config(page_title="Comic Translator")
+# הגדרה נכונה כדי שלא יקרוס
+st.set_page_config(page_title="Comic Translator Fix")
 
 @st.cache_resource
-def get_reader():
+def load_ocr():
     return easyocr.Reader(['en'])
 
-def fix_text_direction(text):
-    # הופך את סדר המילים כדי שהמשפט יהיה קריא בעברית
+def fix_hebrew_display(text):
+    # הופך את סדר האותיות והמילים כדי שייקרא נכון מימין לשמאל
     words = text.split()
-    rev_words = [w[::-1] for w in words]
-    return " ".join(rev_words[::-1])
+    reversed_words = [w[::-1] for w in words]
+    return " ".join(reversed_words[::-1])
 
-def process_image(img_file):
-    reader = get_reader()
+def process_comic(file):
+    reader = load_ocr()
     translator = GoogleTranslator(source='en', target='iw')
     
-    # קריאת התמונה
-    file_bytes = np.asarray(bytearray(img_file.read()), dtype=np.uint8)
+    # המרת קובץ לתמונה
+    file_bytes = np.asarray(bytearray(file.read()), dtype=np.uint8)
     img = cv2.imdecode(file_bytes, 1)
     img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     pil_img = Image.fromarray(img_rgb)
     draw = ImageDraw.Draw(pil_img)
     
-    # פונט ברירת מחדל כדי למנוע בעיות טעינה
-    font = ImageFont.load_default()
+    # ניסיון טעינת הפונט שהעלית - אם נכשל, משתמש בברירת מחדל
+    try:
+        # גודל 14 הוא גודל "בטוח" שלא יחרוג מהבועה
+        font = ImageFont.truetype("font.ttf", 14)
+    except:
+        font = ImageFont.load_default()
 
     results = reader.readtext(img)
 
     for (bbox, text, prob) in results:
         if prob > 0.2:
-            # הגדרת אזור הבועה
-            tl, tr, br, bl = bbox
+            # זיהוי מיקום הטקסט
+            (tl, tr, br, bl) = bbox
             x_min, y_min = int(tl[0]), int(tl[1])
             x_max, y_max = int(br[0]), int(br[1])
             
-            # מחיקה לבנה אטומה
-            draw.rectangle([x_min-2, y_min-2, x_max+2, y_max+2], fill="white")
+            # --- התיקון הקריטי ---
+            # 1. מחיקה לבנה רחבה מאוד (מכסה את כל האנגלית בלבן אטום)
+            draw.rectangle([x_min-5, y_min-5, x_max+5, y_max+5], fill="white", outline="white")
             
             try:
-                # תרגום וסידור
+                # 2. תרגום וסידור טקסט
                 translated = translator.translate(text)
-                final_text = fix_text_direction(translated)
+                clean_text = fix_hebrew_display(translated)
                 
-                # כתיבה במרכז
-                draw.text(((x_min + x_max)/2, (y_min + y_max)/2), 
-                          final_text, fill="black", font=font, anchor="mm")
+                # 3. כתיבה במרכז השטח הלבן
+                center_x = (x_min + x_max) / 2
+                center_y = (y_min + y_max) / 2
+                draw.text((center_x, center_y), clean_text, fill="black", font=font, anchor="mm")
             except:
                 continue
                 
     return pil_img
 
-st.title("מתרגם קומיקס - גרסת הגיבוי")
-uploaded_file = st.file_uploader("תעלה תמונה", type=['png', 'jpg', 'jpeg'])
+st.title("מתרגם קומיקס - גרסת הברזל")
+uploaded = st.file_uploader("העלה דף קומיקס", type=['png', 'jpg', 'jpeg'])
 
-if uploaded_file:
+if uploaded:
     if st.button("תרגם עכשיו"):
-        with st.spinner("מעבד..."):
-            uploaded_file.seek(0)
-            result_img = process_image(uploaded_file)
-            st.image(result_img, use_container_width=True)
+        with st.spinner("מנקה ומתרגם..."):
+            uploaded.seek(0)
+            final_img = process_comic(uploaded)
+            st.image(final_img, use_container_width=True)
