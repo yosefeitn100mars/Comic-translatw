@@ -4,23 +4,33 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 from deep_translator import GoogleTranslator
 import easyocr
+import os
+import requests
 
-st.set_page_config(page_title="Comic Translator Pro")
+st.set_page_config(page_title="Comic Translator Final")
+
+# פונקציה להורדת פונט אם הוא חסר - זה ימנע את הריבועים לנצח
+def get_hebrew_font(size):
+    font_path = "font.ttf"
+    if not os.path.exists(font_path):
+        url = "https://github.com/google/fonts/raw/main/ofl/assistant/Assistant%5Bwght%5D.ttf"
+        r = requests.get(url)
+        with open(font_path, "wb") as f:
+            f.write(r.content)
+    return ImageFont.truetype(font_path, size)
 
 @st.cache_resource
-def load_ocr():
+def load_reader():
     return easyocr.Reader(['en'])
 
 def fix_hebrew(text):
-    # סידור משפט מימין לשמאל
     words = text.split()
     return " ".join([w[::-1] for w in words][::-1])
 
 def process_image(file):
-    reader = load_ocr()
+    reader = load_reader()
     translator = GoogleTranslator(source='en', target='iw')
     
-    # טעינת התמונה
     file_bytes = np.asarray(bytearray(file.read()), dtype=np.uint8)
     img = cv2.imdecode(file_bytes, 1)
     pil_img = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
@@ -33,36 +43,29 @@ def process_image(file):
             tl, tr, br, bl = bbox
             x_min, y_min = int(min(tl[0], bl[0])), int(min(tl[1], tr[1]))
             x_max, y_max = int(max(br[0], tr[0])), int(max(br[1], bl[1]))
-            w, h = x_max - x_min, y_max - y_min
-
-            # 1. מחיקה חזקה - מלבן לבן אטום עם שוליים
-            draw.rectangle([x_min-3, y_min-3, x_max+3, y_max+3], fill="white")
+            
+            # מחיקה לבנה רחבה
+            draw.rectangle([x_min-4, y_min-4, x_max+4, y_max+4], fill="white")
             
             try:
                 translated = translator.translate(text)
                 display_text = fix_hebrew(translated)
                 
-                # 2. התאמת גודל פונט אוטומטית לבועה
-                font_size = max(10, min(16, int(h * 0.8))) 
-                try:
-                    font = ImageFont.truetype("font.ttf", font_size)
-                except:
-                    font = ImageFont.load_default()
-
-                # 3. כתיבה במרכז המדויק
-                draw.text((x_min + w/2, y_min + h/2), display_text, 
-                          fill="black", font=font, anchor="mm")
+                # טעינת פונט בטוחה
+                font = get_hebrew_font(size=max(12, int((y_max-y_min)*0.7)))
+                
+                draw.text(((x_min+x_max)/2, (y_min+y_max)/2), 
+                          display_text, fill="black", font=font, anchor="mm")
             except:
                 continue
-                
     return pil_img
 
-st.title("מתרגם קומיקס - שלב סופי")
-uploaded = st.file_uploader("העלה תמונה", type=['png', 'jpg', 'jpeg'])
+st.title("מתרגם קומיקס - גרסה ללא ריבועים")
+file = st.file_uploader("העלה תמונה", type=['png', 'jpg', 'jpeg'])
 
-if uploaded:
+if file:
     if st.button("תרגם עכשיו"):
-        with st.spinner("מנקה ומסדר..."):
-            uploaded.seek(0)
-            res = process_image(uploaded)
+        with st.spinner("מוריד פונט ומעבד..."):
+            file.seek(0)
+            res = process_image(file)
             st.image(res, use_container_width=True)
