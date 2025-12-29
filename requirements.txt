@@ -1,0 +1,4 @@
+streamlit
+opencv-python-headless
+pillow
+googletrans==4.0.0-rc1
