@@ -25,7 +25,7 @@ def process_comic(image_bytes):
     # טעינת הפונט שהעלית - וודא שהשם כאן זהה בדיוק לשם הקובץ ב-GitHub!
     try:
         # אם קראת לקובץ בשם אחר (למשל font.otf), שנה כאן
-        font = ImageFont.truetype("font.otf", 20) 
+        font = ImageFont.truetype("font.ttf", 20) 
     except:
         font = ImageFont.load_default()
 
