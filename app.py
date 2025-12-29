@@ -5,72 +5,65 @@ from PIL import Image, ImageDraw, ImageFont
 from deep_translator import GoogleTranslator
 import easyocr
 
-st.set_page_config(page_title="Comic Translator Pro")
+st.set_page_config(page_config_title="Comic Fix Pro")
 
 @st.cache_resource
-def load_reader():
-    # טעינת המודל לאנגלית
+def get_reader():
     return easyocr.Reader(['en'])
 
-def reverse_hebrew_logic(text):
-    # הופך כל מילה בנפרד ואז את סדר המילים כדי שהמשפט יהיה קריא
+def fix_text_direction(text):
+    # הופך את סדר המילים כדי שהמשפט יהיה קריא בעברית
     words = text.split()
-    reversed_words = [word[::-1] for word in words]
-    return " ".join(reversed_words[::-1])
+    return " ".join([w[::-1] for w in words][::-1])
 
-def process_comic(image_bytes):
-    reader = load_reader()
+def process_image(img_file):
+    reader = get_reader()
     translator = GoogleTranslator(source='en', target='iw')
     
-    nparr = np.frombuffer(image_bytes, np.uint8)
-    img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-    results = reader.readtext(img)
-    
-    pil_img = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+    # קריאת התמונה
+    file_bytes = np.asarray(bytearray(img_file.read()), dtype=np.uint8)
+    img = cv2.imdecode(file_bytes, 1)
+    img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    pil_img = Image.fromarray(img_rgb)
     draw = ImageDraw.Draw(pil_img)
     
+    # שימוש בפונט ברירת מחדל של המערכת כדי למנוע שגיאות טעינה
     try:
-        font = ImageFont.truetype("font.ttf", 16)
-    except:
         font = ImageFont.load_default()
+    except:
+        font = None
+
+    results = reader.readtext(img)
 
     for (bbox, text, prob) in results:
         if prob > 0.2:
-            top_left = tuple(map(int, bbox[0]))
-            bottom_right = tuple(map(int, bbox[2]))
-            x, y = top_left
-            w, h = bottom_right[0] - x, bottom_right[1] - y
+            # הגדרת אזור הבועה
+            (tl, tr, br, bl) = bbox
+            x_min, y_min = int(tl[0]), int(tl[1])
+            x_max, y_max = int(br[0]), int(br[1])
             
-            # ניקוי הבועה עם מלבן לבן נקי
-            draw.rectangle([x-2, y-2, x+w+2, y+h+2], fill="white")
+            # 1. מחיקה אטומה - מלבן לבן נקי מעל האנגלית
+            draw.rectangle([x_min-2, y_min-2, x_max+2, y_max+2], fill="white", outline="white")
             
             try:
+                # 2. תרגום וסידור טקסט
                 translated = translator.translate(text)
+                final_text = fix_text_direction(translated)
                 
-                # סידור המשפט לעברית תקנית
-                display_text = reverse_hebrew_logic(translated)
-                
-                # חלוקה לשורות אם הטקסט ארוך מהבועה
-                if len(display_text) > 15:
-                    mid = len(display_text) // 2
-                    split_idx = display_text.find(' ', mid - 5, mid + 5)
-                    if split_idx != -1:
-                        display_text = display_text[:split_idx] + "\n" + display_text[split_idx+1:]
-
-                # כתיבה במרכז הבועה
-                draw.multiline_text((x + w/2, y + h/2), display_text, 
-                                  fill="black", font=font, anchor="mm", 
-                                  align="center", spacing=4)
+                # 3. כתיבה
+                draw.text(((x_min + x_max)/2, (y_min + y_max)/2), 
+                          final_text, fill="black", font=font, anchor="mm")
             except:
-                pass
+                continue
+                
     return pil_img
 
-st.title("🎨 מתרגם הקומיקס שלי - מוכן!")
-file = st.file_uploader("העלה דף קומיקס", type=["jpg", "png", "jpeg"])
+# ממשק משתמש פשוט ומהיר
+st.title("מתרגם קומיקס - גרסת הגיבוי")
+uploaded_file = st.file_uploader("תעלה תמונה", type=['png', 'jpg', 'jpeg'])
 
-if file:
+if uploaded_file:
     if st.button("תרגם עכשיו"):
-        with st.spinner("יוצר תוצאה מושלמת..."):
-            file.seek(0)
-            res = process_comic(file.read())
-            st.image(res, use_container_width=True)
+        with st.spinner("מוחק אנגלית וכותב עברית..."):
+            result_img = process_image(uploaded_file)
+            st.image(result_img, use_container_width=True)
