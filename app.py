@@ -4,73 +4,90 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 from deep_translator import GoogleTranslator
 import easyocr
+import textwrap
+from bidi.algorithm import get_display
+import arabic_reshaper
+import requests
 import os
 
-st.set_page_config(page_title="Translator")
+st.set_page_config(page_title="Comic Translator Final")
+
+# --- פונקציה להורדת פונט עברי איכותי ---
+@st.cache_resource
+def get_hebrew_font():
+    font_path = "Rubik-Bold.ttf"
+    if not os.path.exists(font_path):
+        # הורדה ישירה מ-Google Fonts (קישור יציב)
+        url = "https://github.com/google/fonts/raw/main/ofl/rubik/Rubik%5Bwght%5D.ttf"
+        response = requests.get(url)
+        with open(font_path, "wb") as f:
+            f.write(response.content)
+    return font_path
 
 @st.cache_resource
 def load_ocr():
     return easyocr.Reader(['en'])
 
-def fix_text(text):
-    # היפוך פשוט ומהיר לעברית
-    return text[::-1]
+def fix_hebrew_layout(text, width=15):
+    # שבירת שורות לפי רוחב הבועה
+    wrapped = textwrap.fill(text, width=width)
+    # תיקון כיווניות (RTL) לכל שורה
+    reshaped_lines = [get_display(arabic_reshaper.reshape(line)) for line in wrapped.split('\n')]
+    return '\n'.join(reshaped_lines)
 
-def process():
+def process_image(file):
     reader = load_ocr()
     translator = GoogleTranslator(source='en', target='iw')
+    font_p = get_hebrew_font()
     
-    # נתיבים סטנדרטיים לפונטים בשרתי Streamlit/Linux
-    possible_fonts = [
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-        "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
-    ]
+    file_bytes = np.asarray(bytearray(file.read()), dtype=np.uint8)
+    img = cv2.imdecode(file_bytes, 1)
+    pil_img = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+    draw = ImageDraw.Draw(pil_img)
     
-    font_path = None
-    for f in possible_fonts:
-        if os.path.exists(f):
-            font_path = f
-            break
+    results = reader.readtext(img)
 
-    uploaded_file = st.file_uploader("Upload", type=['jpg', 'png', 'jpeg'])
-    
-    if uploaded_file and st.button("Translate"):
-        img = Image.open(uploaded_file).convert("RGB")
-        draw = ImageDraw.Draw(img)
-        
-        # המרה ל-OpenCV בשביל ה-OCR
-        cv_img = np.array(img)
-        results = reader.readtext(cv_img)
-
-        for (bbox, text, prob) in results:
-            if prob > 0.2:
-                # מציאת מיקום
-                (tl, tr, br, bl) = bbox
-                x_min, y_min = int(tl[0]), int(tl[1])
-                x_max, y_max = int(br[0]), int(br[1])
+    for (bbox, text, prob) in results:
+        if prob > 0.15:
+            tl, tr, br, bl = bbox
+            x_min, y_min = int(min(tl[0], bl[0])), int(min(tl[1], tr[1]))
+            x_max, y_max = int(max(br[0], tr[0])), int(max(br[1], bl[1]))
+            
+            # מחיקה לבנה אטומה
+            draw.rectangle([x_min-2, y_min-2, x_max+2, y_max+2], fill="white")
+            
+            try:
+                # תרגום
+                translated = translator.translate(text)
                 
-                # מחיקה לבנה אטומה - שלא יישאר זכר לאנגלית
-                draw.rectangle([x_min-2, y_min-2, x_max+2, y_max+2], fill="white")
+                # חישוב רוחב הבועה להתאמת הטקסט
+                box_width = x_max - x_min
+                chars_per_line = max(8, int(box_width / 8))
                 
-                try:
-                    # תרגום
-                    translated = translator.translate(text)
-                    # היפוך אותיות (בלי לסבך עם מילים)
-                    display_text = fix_text(translated)
-                    
-                    # קביעת פונט - אם לא מצאנו נתיב, נשתמש בברירת מחדל של PIL
-                    if font_path:
-                        font = ImageFont.truetype(font_path, max(12, int((y_max-y_min)*0.8)))
-                    else:
-                        font = ImageFont.load_default()
-                    
-                    # כתיבה
-                    draw.text(((x_min+x_max)/2, (y_min+y_max)/2), display_text, fill="black", font=font, anchor="mm")
-                except:
-                    continue
-        
-        st.image(img)
+                # עיבוד עברית
+                final_text = fix_hebrew_layout(translated, width=chars_per_line)
+                
+                # התאמת גודל פונט
+                num_lines = final_text.count('\n') + 1
+                font_size = max(10, int((y_max - y_min) / (num_lines * 1.2)))
+                font = ImageFont.truetype(font_p, font_size)
+                
+                # ציור הטקסט במרכז הבועה
+                cx, cy = (x_min + x_max) / 2, (y_min + y_max) / 2
+                draw.text((cx, cy), final_text, fill="black", font=font, anchor="mm", align="center")
+            except:
+                continue
+                
+    return pil_img
 
-st.title("Comic Fix")
-process()
+st.title("מתרגם קומיקס - גרסת הברזל")
+uploaded = st.file_uploader("תעלה דף קומיקס", type=['png', 'jpg', 'jpeg'])
+
+if uploaded:
+    if st.button("תרגם"):
+        with st.spinner("מוריד פונט ומעבד..."):
+            uploaded.seek(0)
+            res = process_image(uploaded)
+            st.image(res, use_container_width=True)
+
+                    
