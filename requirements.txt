@@ -6,3 +6,4 @@ deep-translator
 easyocr
 python-bidi
 arabic-reshaper
+requests
