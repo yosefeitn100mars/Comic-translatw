@@ -1,4 +1,6 @@
 streamlit
+deep-translator
 opencv-python-headless
-pillow
-googletrans==4.0.0-rc1
+Pillow
+numpy
+
