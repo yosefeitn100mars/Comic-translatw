@@ -5,7 +5,7 @@ from PIL import Image, ImageDraw, ImageFont
 from deep_translator import GoogleTranslator
 import easyocr
 
-st.set_page_config(page_title="Comic Translator")
+st.set_page_config(page_title="Final Fix")
 
 @st.cache_resource
 def load_reader():
@@ -22,39 +22,38 @@ def process_comic(image_bytes):
     pil_img = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
     draw = ImageDraw.Draw(pil_img)
     
-    # שימוש בשם החדש כדי לעקוף את הזיכרון של Streamlit
+    # השם החדש כדי לעקוף את הזיכרון של המערכת
     try:
-        font = ImageFont.truetype("newfont.ttf", 14)
+        font = ImageFont.truetype("my_new_font_v1.ttf", 15)
     except:
         font = ImageFont.load_default()
 
     for (bbox, text, prob) in results:
-        if prob > 0.2:
+        if prob > 0.15: # רגישות גבוהה יותר לזיהוי
             top_left = tuple(map(int, bbox[0]))
             bottom_right = tuple(map(int, bbox[2]))
             x, y = top_left
-            w = bottom_right[0] - x
-            h = bottom_right[1] - y
+            w, h = bottom_right[0] - x, bottom_right[1] - y
             
-            # כיסוי לבן רחב יותר כדי למחוק את האנגלית לגמרי
+            # מחיקה רחבה מאוד של האנגלית
             draw.rectangle([x-5, y-5, x+w+5, y+h+5], fill="white")
             
             try:
                 translated = translator.translate(text)
-                # היפוך אותיות לעברית
+                # היפוך אותיות ידני לעברית
                 display_text = translated[::-1]
-                # כתיבה במרכז הבועה
+                
+                # כתיבה במרכז
                 draw.text((x + w/2, y + h/2), display_text, fill="black", font=font, anchor="mm")
             except:
                 pass
     return pil_img
 
-st.title("מתרגם קומיקס - גרסת תיקון פונט")
+st.title("מתרגם קומיקס - גרסה סופית")
 file = st.file_uploader("העלה תמונה", type=["jpg", "png", "jpeg"])
 
 if file:
     if st.button("תרגם עכשיו"):
-        with st.spinner("מנקה זיכרון ומתרגם..."):
-            file.seek(0)
-            res = process_comic(file.read())
-            st.image(res, use_container_width=True)
+        file.seek(0)
+        res = process_comic(file.read())
+        st.image(res, use_container_width=True)
