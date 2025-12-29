@@ -5,7 +5,6 @@ from PIL import Image, ImageDraw, ImageFont
 from deep_translator import GoogleTranslator
 import io
 
-# הגדרות דף
 st.set_page_config(page_title="Comic Translator AI", layout="wide")
 
 def process_comic(image_bytes):
@@ -14,43 +13,37 @@ def process_comic(image_bytes):
     img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
     img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     
-    # 1. זיהוי בועות
+    # זיהוי בועות (שטחים לבנים)
     hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-    lower_white = np.array([0, 0, 200])
-    upper_white = np.array([180, 50, 255])
-    mask = cv2.inRange(hsv, lower_white, upper_white)
-    
-    # 2. מציאת קווי מתאר
+    mask = cv2.inRange(hsv, np.array([0, 0, 200]), np.array([180, 50, 255]))
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     
     pil_img = Image.fromarray(img_rgb)
     draw = ImageDraw.Draw(pil_img)
-    
-    # מנוע התרגום החדש
     translator = GoogleTranslator(source='en', target='iw')
-    
+
     for cnt in contours:
-        area = cv2.contourArea(cnt)
-        if area > 500:
+        if cv2.contourArea(cnt) > 500:
             x, y, w, h = cv2.boundingRect(cnt)
+            
+            # 1. מחיקת הטקסט המקורי (צביעה בלבן)
             draw.rectangle([x, y, x+w, y+h], fill="white")
             
-            # תרגום טקסט לדוגמה (עד שנוסיף OCR מלא)
+            # 2. כאן אנחנו שותלים תרגום (כרגע זה טקסט קבוע, בהמשך נחבר OCR)
             try:
-                translated_text = translator.translate("Hello") 
-                draw.text((x, y + h/2), translated_text, fill="black")
+                msg = "בום!" # דוגמה לתרגום
+                draw.text((x + w//2, y + h//2), msg, fill="black", anchor="mm")
             except:
                 pass
 
     return pil_img
 
-# ממשק המשתמש
 st.title("🎨 מתרגם הקומיקס שלי")
-
 uploaded_file = st.file_uploader("העלה עמוד קומיקס", type=["jpg", "jpeg", "png"])
 
 if uploaded_file:
     if st.button("תרגם עכשיו"):
-        with st.spinner("מעבד..."):
+        with st.spinner("מנתח ומנקה בועות..."):
             result_img = process_comic(uploaded_file.read())
-            st.image(result_img, use_container_width=True)
+            st.image(result_img, use_container_width=True, caption="התוצאה (בועות מנוקות)")
+
