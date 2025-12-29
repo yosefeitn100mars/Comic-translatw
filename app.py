@@ -5,7 +5,8 @@ from PIL import Image, ImageDraw, ImageFont
 from deep_translator import GoogleTranslator
 import easyocr
 
-st.set_page_config(page_config_title="Comic Fix Pro")
+# תיקון השגיאה - הפקודה הנכונה היא page_title
+st.set_page_config(page_title="Comic Translator")
 
 @st.cache_resource
 def get_reader():
@@ -14,7 +15,8 @@ def get_reader():
 def fix_text_direction(text):
     # הופך את סדר המילים כדי שהמשפט יהיה קריא בעברית
     words = text.split()
-    return " ".join([w[::-1] for w in words][::-1])
+    rev_words = [w[::-1] for w in words]
+    return " ".join(rev_words[::-1])
 
 def process_image(img_file):
     reader = get_reader()
@@ -27,30 +29,27 @@ def process_image(img_file):
     pil_img = Image.fromarray(img_rgb)
     draw = ImageDraw.Draw(pil_img)
     
-    # שימוש בפונט ברירת מחדל של המערכת כדי למנוע שגיאות טעינה
-    try:
-        font = ImageFont.load_default()
-    except:
-        font = None
+    # פונט ברירת מחדל כדי למנוע בעיות טעינה
+    font = ImageFont.load_default()
 
     results = reader.readtext(img)
 
     for (bbox, text, prob) in results:
         if prob > 0.2:
             # הגדרת אזור הבועה
-            (tl, tr, br, bl) = bbox
+            tl, tr, br, bl = bbox
             x_min, y_min = int(tl[0]), int(tl[1])
             x_max, y_max = int(br[0]), int(br[1])
             
-            # 1. מחיקה אטומה - מלבן לבן נקי מעל האנגלית
-            draw.rectangle([x_min-2, y_min-2, x_max+2, y_max+2], fill="white", outline="white")
+            # מחיקה לבנה אטומה
+            draw.rectangle([x_min-2, y_min-2, x_max+2, y_max+2], fill="white")
             
             try:
-                # 2. תרגום וסידור טקסט
+                # תרגום וסידור
                 translated = translator.translate(text)
                 final_text = fix_text_direction(translated)
                 
-                # 3. כתיבה
+                # כתיבה במרכז
                 draw.text(((x_min + x_max)/2, (y_min + y_max)/2), 
                           final_text, fill="black", font=font, anchor="mm")
             except:
@@ -58,12 +57,12 @@ def process_image(img_file):
                 
     return pil_img
 
-# ממשק משתמש פשוט ומהיר
 st.title("מתרגם קומיקס - גרסת הגיבוי")
 uploaded_file = st.file_uploader("תעלה תמונה", type=['png', 'jpg', 'jpeg'])
 
 if uploaded_file:
     if st.button("תרגם עכשיו"):
-        with st.spinner("מוחק אנגלית וכותב עברית..."):
+        with st.spinner("מעבד..."):
+            uploaded_file.seek(0)
             result_img = process_image(uploaded_file)
             st.image(result_img, use_container_width=True)
