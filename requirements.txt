@@ -3,4 +3,4 @@ deep-translator
 opencv-python-headless
 Pillow
 numpy
-
+easyocr
