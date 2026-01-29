@@ -6,29 +6,8 @@ from deep_translator import GoogleTranslator
 import easyocr
 import requests
 import os
-
-# פונקציה שהופכת עברית ומסדרת שורות ידנית
-def fix_hebrew_manual(text, max_chars=15):
-    if not text: return ""
-    # הפיכה בסיסית של כל המשפט
-    words = text.split()
-    # סידור מילים מימין לשמאל והפיכת אותיות בכל מילה
-    fixed_words = [w[::-1] for w in words]
-    # חיבור חזרה לשורות
-    lines = []
-    current_line = []
-    current_count = 0
-    
-    for word in fixed_words:
-        if current_count + len(word) > max_chars:
-            lines.append(" ".join(current_line[::-1]))
-            current_line = [word]
-            current_count = len(word)
-        else:
-            current_line.append(word)
-            current_count += len(word) + 1
-    lines.append(" ".join(current_line[::-1]))
-    return "\n".join(lines)
+import textwrap
+from bidi.algorithm import get_display
 
 @st.cache_resource
 def get_font():
@@ -68,8 +47,10 @@ def process():
                 try:
                     # תרגום
                     trans = translator.translate(text)
-                    # הפיכה ידנית (בלי ספריות חיצוניות)
-                    final_text = fix_hebrew_manual(trans, max_chars=int((x_max-x_min)/10) + 5)
+
+                    # שימוש ב-bidi ו-textwrap לסידור הטקסט
+                    wrapped_text = textwrap.fill(trans, width=int((x_max-x_min)/10) + 5)
+                    final_text = get_display(wrapped_text)
                     
                     font_size = max(12, int((y_max-y_min) / (final_text.count('\n')+1.5)))
                     font = ImageFont.truetype(font_p, font_size)
